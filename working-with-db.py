@@ -15,6 +15,7 @@
 # %%
 import pandas as pd
 import keyring
+from numpy import setdiff1d
 
 from sqlalchemy import inspect, create_engine
 from sqlalchemy import text
@@ -107,6 +108,8 @@ pd.read_sql(
 # %% [markdown]
 # # Using SQL Alchemy
 # When working with SQL Alchemy connections, it is important to use context managers so that the connection can be released after the statement is executed.
+#
+# There are 3 main ways of working with databases via SQL Alchemy.
 # ## Using text
 # This is the most basic one where we craft SQL statements manually.
 
@@ -131,14 +134,15 @@ metadata_sel = MetaData()
 
 with engine.connect() as conn:
     album_sel_tbl = Table("album", metadata_sel, autoload_with=conn)
+    album_pd_tbl = Table("album_pd", metadata_sel, autoload_with=conn)
 
-album_sel_tbl
+album_pd_tbl
 
 # %% [markdown]
 # This creates a SELECT statement that then be executed.
 
 # %%
-stmt2 = select(album_sel_tbl)
+stmt2 = select(album_pd_tbl)
 stmt3 = select(album_sel_tbl).where(album_sel_tbl.c.ArtistId == 10)
 print(stmt3)
 
@@ -216,6 +220,34 @@ session.commit()
 
 # %%
 pd.read_sql(sql="album", con=db_string).tail()
+
+# %% [markdown]
+# ORM does not map tables without primary keys. Below is how to handle such as situation in ORM. Otherwise, `select` can be used.
+#
+# **AMENDING AN EXISTING PK** <br>
+# SQL Alchemy can only issue CREATE, DROP, and SELECT statements but not ALTER statements hence cannot alter a table schema to amend an existing primary key. For that you will require [Alembic](https://docs.sqlalchemy.org/en/14/core/metadata.html#altering-database-objects-through-migrations), to issue SQL statements, or use the DBMS itself.
+
+# %%
+orm_tbls = [
+    str(tbl).split(".")[3].replace("'>", "") for tbl in list(ABase.classes)
+]
+insp_tbls = inspect(engine).get_table_names()
+
+# %%
+# Unmapped tables
+setdiff1d(ar1=insp_tbls, ar2=orm_tbls)
+
+# %%
+class AlbumDf(ABase):
+    __tablename__ = "album_df"
+    __table_args__ = {"extend_existing": True}
+
+    AlbumId = Column(Integer, primary_key=True)
+
+
+# %%
+ABase.prepare(autoload_with=engine, reflect=True)
+list(ABase.classes)
 
 # %% [markdown]
 # ## Creating tables
